@@ -1,0 +1,40 @@
+[project]
+name = "finance-bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "alibabacloud-tingwu20220930>=1.0.0",
+    "colorlog>=6.7.0",
+    "dashscope>=1.14.0",
+    "ffmpeg-python>=0.2.0",
+    "oss2>=2.18.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.31.0",
+    "schedule>=1.2.0",
+    "tenacity>=8.2.0",
+    "yt-dlp>=2024.1.0",
+]
+[tool.ruff]
+# 设置每行最大字符数
+line-length = 120
+# 告诉 Ruff 你的代码是给 Python 3.10+ 跑的
+target-version = "py310"
+
+[tool.ruff.lint]
+# 开启 import 排序 (I) 和 Pyflakes (F), Pycodestyle (E, W)
+extend-select = ["I", "E", "F", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# 忽略 __init__.py 文件的 "导入未使用" 警告
+"__init__.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
+]
