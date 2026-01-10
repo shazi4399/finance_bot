@@ -238,8 +238,8 @@ wheels = [
 ]
 
 [[package]]
-name = "alibabacloud-tingwu20220930"
-version = "1.0.0"
+name = "alibabacloud-tingwu20230930"
+version = "2.0.24"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alibabacloud-endpoint-util" },
@@ -247,9 +247,9 @@ dependencies = [
     { name = "alibabacloud-tea-openapi" },
     { name = "alibabacloud-tea-util" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/64/d6f0748f59184ac8b0070fb7152d388fc6c3b6398bd7769f3adab1a6e344/alibabacloud_tingwu20220930-1.0.0.tar.gz", hash = "sha256:55d3bf041b14b1b350eb4e3170f3e12339fb3c906885a764f925d227782832ad", size = 9018, upload-time = "2023-08-08T01:37:41.067Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/a1/642355aa787a105bef417efef6522eea04912a0201b9976d9d599a8b74eb/alibabacloud_tingwu20230930-2.0.24.tar.gz", hash = "sha256:2bcb5232cb8f9bdd728b54a671b916e3cc80df9ffc846cb0280602af3abd82e9", size = 13074, upload-time = "2025-09-12T05:32:16.17Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/f6/56b343b3c539b45e2fb5860d8642e8c3f5f8a91856b4951a133fa1b3f250/alibabacloud_tingwu20220930-1.0.0-py3-none-any.whl", hash = "sha256:94eee306aa2df25a08e56df5246e67eed98790e3d3ecc5cab5288da9e75aecb8", size = 8184, upload-time = "2023-08-08T01:37:39.811Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/25/647cdd87acd272058c0f58539ce4e298c255f09b3e03a7ed9d13d716666f/alibabacloud_tingwu20230930-2.0.24-py3-none-any.whl", hash = "sha256:4197b900787f2fedee3801f310de096caf2ce529ae79673611bc25f05557e1b5", size = 11488, upload-time = "2025-09-12T05:32:14.996Z" },
 ]
 
 [[package]]
@@ -603,7 +603,7 @@ name = "finance-bot"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "alibabacloud-tingwu20220930" },
+    { name = "alibabacloud-tingwu20230930" },
     { name = "colorlog" },
     { name = "dashscope" },
     { name = "ffmpeg-python" },
@@ -623,7 +623,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alibabacloud-tingwu20220930", specifier = ">=1.0.0" },
+    { name = "alibabacloud-tingwu20230930", specifier = ">=2.0.24" },
     { name = "colorlog", specifier = ">=6.7.0" },
     { name = "dashscope", specifier = ">=1.14.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },

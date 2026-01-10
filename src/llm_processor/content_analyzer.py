@@ -1,6 +1,6 @@
 """Content analysis and structuring for Feishu documents"""
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from src.utils.config import Config
 from src.utils.logger import get_logger
@@ -87,6 +87,9 @@ class ContentAnalyzer:
 
         # Add speaker information
         analysis_result["speakers"] = transcript_data.get("speakers", {})
+
+        # Add segments for raw transcript display
+        analysis_result["segments"] = transcript_data.get("segments", [])
 
         # Add chapters if available
         if transcript_data.get("chapters"):
@@ -207,13 +210,42 @@ class ContentAnalyzer:
             formatted_full_text = analysis_result.get("formatted_full_text", "")
             if formatted_full_text:
                 blocks.append({"type": "heading_2", "content": "📝 全文逐字稿 (精修版)"})
+                blocks.append({
+                    "type": "callout",
+                    "style": "grey",
+                    "content": "以下是经过LLM智能整理的全文逐字稿，保留了原话的真实性，同时优化了段落结构。"
+                })
 
-                # Feishu text blocks might have limits, but we'll try sending as one text block first.
-                # Ideally, we should split if too long, but let's assume it fits or Feishu handles it.
-                # Using 'text' type which maps to paragraph/text run.
-                blocks.append({"type": "text", "content": formatted_full_text})
+                # Split into paragraphs for better readability
+                paragraphs = formatted_full_text.split("\n\n")
+                for paragraph in paragraphs:
+                    if paragraph.strip():
+                        # Add each paragraph as a separate text block
+                        blocks.append({"type": "text", "content": paragraph.strip()})
+                        # Add a small spacer between paragraphs
+                        blocks.append({"type": "text", "content": ""})
 
-            # 7. Footer
+            # 7. Optional: Raw Transcript with Timestamps (if available)
+            transcript_metadata = analysis_result.get("transcript_metadata", {})
+            segments = analysis_result.get("segments", [])
+
+            # Only show timestamped transcript if we have meaningful segments
+            if segments and len(segments) > 0:
+                raw_transcript = self._format_raw_transcript(analysis_result)
+                if raw_transcript:
+                    blocks.append({"type": "heading_2", "content": "⏱️ 原始转录（含时间戳）"})
+                    blocks.append(
+                        {
+                            "type": "callout",
+                            "style": "grey",
+                            "content": "💡 提示：时间戳格式为 [MM:SS] 或 [HH:MM:SS]，方便您快速定位到视频的具体位置。",
+                        }
+                    )
+                    # Split into chunks to avoid too long blocks (max 30 lines per block)
+                    for chunk in self._split_transcript_into_chunks(raw_transcript, max_lines=30):
+                        blocks.append({"type": "text", "content": chunk})
+
+            # 8. Footer
             from datetime import datetime
 
             processed_at = analysis_result.get("processed_at", datetime.now().isoformat())
@@ -246,3 +278,109 @@ class ContentAnalyzer:
         ]
 
         return {"title": title, "blocks": fallback_blocks}
+
+    def _format_raw_transcript(self, analysis_result: Dict[str, Any]) -> str:
+        """
+        Format raw transcript with timestamps and speaker labels
+
+        Args:
+            analysis_result: Analysis result containing transcript data
+
+        Returns:
+            Formatted transcript string with timestamps
+        """
+        try:
+            # Try to get segments from various sources
+            segments = []
+
+            # Check if we have raw transcript data
+            if "segments" in analysis_result:
+                segments = analysis_result["segments"]
+            elif "transcript_data" in analysis_result:
+                transcript_data = analysis_result["transcript_data"]
+                segments = transcript_data.get("segments", [])
+
+            if not segments:
+                return ""
+
+            # Get speaker information
+            speakers = analysis_result.get("speakers", {})
+
+            # Format segments with timestamps
+            formatted_lines = []
+            current_speaker = None
+
+            for segment in segments:
+                speaker_id = str(segment.get("speaker_id", 0))
+                speaker_name = speakers.get(speaker_id, {}).get("name", f"说话人{speaker_id}")
+                text = segment.get("text", "").strip()
+
+                if not text:
+                    continue
+
+                # Format timestamp
+                start_time = segment.get("start_time", 0)
+                timestamp = self._format_timestamp(start_time)
+
+                # Add speaker label if changed
+                if speaker_id != current_speaker:
+                    if formatted_lines:  # Add blank line between speakers
+                        formatted_lines.append("")
+                    formatted_lines.append(f"【{speaker_name}】")
+                    current_speaker = speaker_id
+
+                # Add timestamped text
+                formatted_lines.append(f"[{timestamp}] {text}")
+
+            return "\n".join(formatted_lines)
+
+        except Exception as e:
+            self.logger.error(f"Failed to format raw transcript: {e}")
+            return ""
+
+    def _format_timestamp(self, seconds: float) -> str:
+        """
+        Format timestamp in MM:SS or HH:MM:SS format
+
+        Args:
+            seconds: Time in seconds
+
+        Returns:
+            Formatted timestamp string
+        """
+        try:
+            seconds = int(seconds)
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            secs = seconds % 60
+
+            if hours > 0:
+                return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+            else:
+                return f"{minutes:02d}:{secs:02d}"
+
+        except Exception:
+            return "00:00"
+
+    def _split_transcript_into_chunks(self, transcript: str, max_lines: int = 50) -> List[str]:
+        """
+        Split transcript into chunks of maximum lines
+
+        Args:
+            transcript: Full transcript text
+            max_lines: Maximum lines per chunk
+
+        Returns:
+            List of transcript chunks
+        """
+        if not transcript:
+            return []
+
+        lines = transcript.split("\n")
+        chunks = []
+
+        for i in range(0, len(lines), max_lines):
+            chunk_lines = lines[i : i + max_lines]
+            chunks.append("\n".join(chunk_lines))
+
+        return chunks

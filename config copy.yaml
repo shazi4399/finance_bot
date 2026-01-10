@@ -1,0 +1,55 @@
+      
+# Content Intelligence Pipeline Configuration
+# 企业级自动化内容情报流水线配置文件
+
+# 飞书配置
+feishu:
+  app_id: ""
+  app_secret: ""
+  webhook: ""
+
+
+# 阿里云配置
+aliyun:
+  access_key_id: ""
+  access_key_secret: ""
+  oss_endpoint: ""
+  oss_bucket: ""
+  region: ""
+
+# 通义千问配置
+dashscope:
+  api_key: ""
+
+# 通义听悟配置
+tingwu:
+  app_key: ""
+
+# 监听目标配置
+monitoring:
+  bilibili_uid: "322005137"
+  check_interval: 3600  # 秒，默认1小时检查一次
+  max_videos_per_check: 5  # 每次检查最多处理视频数
+  cookies_file: "data/bilibili_cookies.txt"  # 可选：Bilibili cookies文件路径，用于绕过登录限制
+
+# 文件存储配置
+storage:
+  temp_dir: "/tmp/finance_bot"
+  oss_prefix: "daily_transcribe"
+  cleanup_after_days: 1  # OSS文件保留天数
+
+# 日志配置
+logging:
+  level: "INFO"
+  file: "logs/pipeline.log"
+  max_size: "10MB"
+  backup_count: 5
+
+# 重试配置
+retry:
+  max_attempts: 3
+  backoff_factor: 2
+
+transcription:
+  service: tingwu     # 必须设置为 'tingwu' 才能避免测试代码中的警告
+  language: zh-CN     # 设置为中文，或者你需要的其他语言代码

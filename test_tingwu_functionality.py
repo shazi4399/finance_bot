@@ -11,7 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 from src.transcriber.tingwu_client import TingwuClient
 from src.transcriber.transcriber import AudioTranscriber
 from src.utils.config import Config
-from src.utils.logger import get_logger
+from src.utils.logger import get_logger,setup_logger
 
 
 def test_tingwu_client():
@@ -95,6 +95,7 @@ def test_configuration():
 
 
 if __name__ == "__main__":
+    setup_logger(level="INFO")
     print("=== 通义听悟功能测试 ===")
 
     # 测试配置

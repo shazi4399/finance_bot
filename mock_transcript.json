@@ -1,0 +1,78 @@
+{
+  "text": "大家好，今天我们来聊一聊最近的持仓变动。首先说一下神威药业，我最近加仓了20万进去，现在总仓位是47.8万。为什么加仓呢？主要有几个原因：第一，这个公司的分红政策很好，就像爹妈养娃一样，会定期给股东回报。第二，从财报来看，营收增长很稳定，现金流也不错。第三，估值相对便宜，市盈率只有15倍左右。接下来说说另一只股票，最近市场波动比较大，我选择了锁仓观望，等待更好的入场时机。总的来说，今天的盈亏是正的，赚了大概5个点，市场整体来说还是比较乐观的。",
+  "segments": [
+    {
+      "text": "大家好，今天我们来聊一聊最近的持仓变动。",
+      "start_time": 0.0,
+      "end_time": 3.5,
+      "speaker_id": 0,
+      "confidence": 0.95
+    },
+    {
+      "text": "首先说一下神威药业，我最近加仓了20万进去，现在总仓位是47.8万。",
+      "start_time": 3.5,
+      "end_time": 8.2,
+      "speaker_id": 0,
+      "confidence": 0.93
+    },
+    {
+      "text": "为什么加仓呢？主要有几个原因：",
+      "start_time": 8.2,
+      "end_time": 10.5,
+      "speaker_id": 0,
+      "confidence": 0.96
+    },
+    {
+      "text": "第一，这个公司的分红政策很好，就像爹妈养娃一样，会定期给股东回报。",
+      "start_time": 10.5,
+      "end_time": 15.8,
+      "speaker_id": 0,
+      "confidence": 0.94
+    },
+    {
+      "text": "第二，从财报来看，营收增长很稳定，现金流也不错。",
+      "start_time": 15.8,
+      "end_time": 19.5,
+      "speaker_id": 0,
+      "confidence": 0.95
+    },
+    {
+      "text": "第三，估值相对便宜，市盈率只有15倍左右。",
+      "start_time": 19.5,
+      "end_time": 23.0,
+      "speaker_id": 0,
+      "confidence": 0.96
+    },
+    {
+      "text": "接下来说说另一只股票，最近市场波动比较大，我选择了锁仓观望，等待更好的入场时机。",
+      "start_time": 23.0,
+      "end_time": 28.5,
+      "speaker_id": 0,
+      "confidence": 0.94
+    },
+    {
+      "text": "总的来说，今天的盈亏是正的，赚了大概5个点，市场整体来说还是比较乐观的。",
+      "start_time": 28.5,
+      "end_time": 33.0,
+      "speaker_id": 0,
+      "confidence": 0.95
+    }
+  ],
+  "speakers": {
+    "0": {
+      "id": "0",
+      "name": "主播",
+      "gender": "male",
+      "confidence": 0.95
+    }
+  },
+  "chapters": [],
+  "summary": "",
+  "metadata": {
+    "task_id": "MOCK_TASK_ID",
+    "status": "SUCCESS",
+    "duration": 33,
+    "word_count": 150,
+    "language": "zh-CN"
+  }
+}
