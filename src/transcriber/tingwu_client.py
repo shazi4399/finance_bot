@@ -158,8 +158,12 @@ class TingwuClient:
                 if not full_text:
                     self.logger.warning("标准路径未提取到文本，启动深度搜索...")
                     full_text = self._recursive_find_text(data)
+                    # 策略B 搜索到的是句子级别的列表，直接拼接，避免每句话换行
+                    final_result["Text"] = "".join(full_text)
+                else:
+                    # 策略A 提取的是段落级别的列表，使用换行符分隔
+                    final_result["Text"] = "\n".join(full_text)
                 
-                final_result["Text"] = "\n".join(full_text)
                 self.logger.info(f"成功提取转录文本: {len(final_result['Text'])} 字符")
 
             except Exception as e:
