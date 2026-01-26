@@ -30,6 +30,7 @@ monitoring:
   bilibili_uid: "322005137"
   check_interval: 3600  # 秒，默认1小时检查一次
   max_videos_per_check: 5  # 每次检查最多处理视频数
+  max_video_duration: 3600 # 视频最大时长（秒），默认1小时，超过此时长的视频将被跳过
   cookies_file: "data/bilibili_cookies.txt"  # 可选：Bilibili cookies文件路径，用于绕过登录限制
 
 # 文件存储配置

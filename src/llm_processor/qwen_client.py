@@ -136,37 +136,97 @@ class QwenClient:
         Returns:
             Parsed JSON dictionary
         """
+        content = re.sub(r"```json\s*", "", content, flags=re.IGNORECASE)
+        content = re.sub(r"```\s*", "", content)
+        content = content.strip()
+
+        def _truncate(s: str, head: int = 800, tail: int = 800) -> str:
+            if len(s) <= head + tail:
+                return s
+            return f"{s[:head]}\n...\n{s[-tail:]}"
+
         try:
-            # Remove markdown code blocks
-            content = re.sub(r"```json\s*", "", content)
-            content = re.sub(r"```\s*", "", content)
-
-            # Remove leading/trailing whitespace
-            content = content.strip()
-
-            # Parse JSON
             return json.loads(content)
-
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse JSON: {e}")
-            self.logger.debug(f"Content that failed to parse: {content}")
+            self.logger.debug(f"Content that failed to parse (truncated): {_truncate(content)}")
 
-            # Try to fix common JSON issues
+        extracted = self._extract_json_substring(content)
+        if extracted:
             try:
-                # Remove trailing commas
-                content = re.sub(r",\s*}", "}", content)
-                content = re.sub(r",\s*]", "]", content)
+                return json.loads(extracted)
+            except json.JSONDecodeError as e:
+                self.logger.error(f"Failed to parse extracted JSON: {e}")
 
-                # Try parsing again
-                return json.loads(content)
-
+            try:
+                extracted_fixed = re.sub(r",\s*}", "}", extracted)
+                extracted_fixed = re.sub(r",\s*]", "]", extracted_fixed)
+                extracted_fixed = re.sub(r"[\x00-\x08\x0B-\x1F]", "", extracted_fixed)
+                return json.loads(extracted_fixed)
             except json.JSONDecodeError:
-                # If still fails, return error structure
-                return {
-                    "error": "Failed to parse JSON",
-                    "raw_content": content,
-                    "parse_error": str(e),
-                }
+                pass
+
+        try:
+            content_fixed = re.sub(r",\s*}", "}", content)
+            content_fixed = re.sub(r",\s*]", "]", content_fixed)
+            content_fixed = re.sub(r"[\x00-\x08\x0B-\x1F]", "", content_fixed)
+            return json.loads(content_fixed)
+        except json.JSONDecodeError as e:
+            return {
+                "error": "Failed to parse JSON",
+                "raw_content_truncated": _truncate(content),
+                "parse_error": str(e),
+            }
+
+    def _extract_json_substring(self, content: str) -> Optional[str]:
+        start_candidates = []
+        for i, ch in enumerate(content):
+            if ch == "{" or ch == "[":
+                start_candidates.append(i)
+                break
+
+        if not start_candidates:
+            return None
+
+        start = start_candidates[0]
+        opening = content[start]
+        closing = "}" if opening == "{" else "]"
+
+        stack = []
+        in_string = False
+        escape = False
+
+        for idx in range(start, len(content)):
+            ch = content[idx]
+
+            if in_string:
+                if escape:
+                    escape = False
+                    continue
+                if ch == "\\":
+                    escape = True
+                    continue
+                if ch == "\"":
+                    in_string = False
+                continue
+
+            if ch == "\"":
+                in_string = True
+                continue
+
+            if ch == "{" or ch == "[":
+                stack.append(ch)
+                continue
+            if ch == "}" or ch == "]":
+                if not stack:
+                    continue
+                last = stack.pop()
+                if (last == "{" and ch != "}") or (last == "[" and ch != "]"):
+                    return None
+                if not stack and ch == closing:
+                    return content[start : idx + 1].strip()
+
+        return None
 
     def analyze_content(self, transcript_text: str, video_title: str = "") -> Dict[str, Any]:
         """
@@ -181,8 +241,57 @@ class QwenClient:
         """
         self.logger.info("Analyzing content with Qwen LLM")
 
-        # Build analysis prompt using the new System Prompt
-        prompt = f"""
+        max_full_text_chars = int(self.config.get("max_full_text_chars", 3000))
+        is_long_transcript = len(transcript_text) > max_full_text_chars
+
+        compact_prompt = f"""
+你是一位专业的财经复盘记录员，擅长处理语音转录文本。请对转录内容进行“高保真逻辑提取”，并生成简洁摘要。
+
+要求：
+1. 保留原话，不要改写关键表达。
+2. 数据优先，必须精确提取所有提到的数字（仓位金额、百分比、股价）。
+3. 拒绝脑补，博主没说的不要总结。
+4. 只输出一个 JSON 对象，不要输出任何解释文字。
+
+注意：本次转录内容较长，请不要在 JSON 中输出完整逐字稿，只需输出摘要、持仓变动、金句。
+
+视频标题：{video_title}
+
+转录内容：
+{transcript_text}
+
+输出 JSON 字段：
+{{
+  "title": "生成一个吸引人的标题，格式：日期 | 核心金句",
+  "summary": "200字以内的今日核心概览（包含当日盈亏、市场定性）",
+  "positions": [{{"name":"","action":"","position_details":"","logic":""}}],
+  "quotes": ["金句1","金句2"]
+}}
+"""
+        compact_schema = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "summary": {"type": "string"},
+                "positions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "action": {"type": "string"},
+                            "position_details": {"type": "string"},
+                            "logic": {"type": "string"},
+                        },
+                        "required": ["name", "action", "position_details", "logic"],
+                    },
+                },
+                "quotes": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["title", "summary", "positions", "quotes"],
+        }
+
+        full_prompt = f"""
 你是一位专业的财经复盘记录员，擅长处理语音转录文本。你的任务是将杂乱的语音转录文本处理成两部分内容。
 
 ### 任务一：全文逐字稿精修 (Verbatim Transcript)
@@ -190,7 +299,7 @@ class QwenClient:
 * **要求**：
     1.  **智能分段**：根据语义和话题转换，将长文本切分成合理的段落。
     2.  **标点修正**：修复转录中缺失或错误的标点符号。
-    3.  **绝对忠实**：**严禁**删减任何内容，**严禁**改写措辞。必须保留博主的口癖（如“这个这个”、“对吧”）、方言词汇和情绪表达。我们要的是“整理”，不是“改写”。
+    3.  **绝对忠实**：**严禁**删减任何内容，**严禁**改写措辞。必须保留博主的口癖（如“这个这个”、“对吧”）、方言词汇和情绪表达。
 
 ### 任务二：高保真逻辑提取 (High-Fidelity Extraction)
 * **目标**：提取博主的交易逻辑和持仓变动，保持“原汁原味”。
@@ -224,9 +333,7 @@ class QwenClient:
     ]
 }}
 """
-
-        # Define JSON schema
-        schema = {
+        full_schema = {
             "type": "object",
             "properties": {
                 "title": {"type": "string"},
@@ -257,16 +364,31 @@ class QwenClient:
         }
 
         try:
-            result = self.generate_json(prompt, schema=schema)
+            if is_long_transcript:
+                result = self.generate_json(compact_prompt, schema=compact_schema)
+                if "error" in result:
+                    self.logger.error(f"LLM analysis failed: {result['error']}")
+                    return self._get_fallback_result(video_title, transcript_text)
 
-            # Validate and clean result
+                result.setdefault("formatted_full_text", "")
+                result = self._ensure_required_fields(result, video_title, transcript_text)
+                self.logger.info("Content analysis completed successfully")
+                return result
+
+            result = self.generate_json(full_prompt, schema=full_schema)
+            if "error" not in result:
+                result = self._ensure_required_fields(result, video_title, transcript_text)
+                self.logger.info("Content analysis completed successfully")
+                return result
+
+            self.logger.error(f"LLM analysis failed: {result['error']}")
+            result = self.generate_json(compact_prompt, schema=compact_schema)
             if "error" in result:
                 self.logger.error(f"LLM analysis failed: {result['error']}")
                 return self._get_fallback_result(video_title, transcript_text)
 
-            # Ensure required fields exist
+            result.setdefault("formatted_full_text", "")
             result = self._ensure_required_fields(result, video_title, transcript_text)
-
             self.logger.info("Content analysis completed successfully")
             return result
 

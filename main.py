@@ -36,6 +36,7 @@ def main():
     parser.add_argument("--config", default="config.yaml", help="Configuration file path")
     parser.add_argument("--daemon", action="store_true", help="Run as daemon with scheduled checks")
     parser.add_argument("--check-once", action="store_true", help="Run check once and exit")
+    parser.add_argument("--manual", type=str, help="Manually process a specific BVID (e.g. BV1xxxx)")
     parser.add_argument("--validate-config", action="store_true", help="Validate configuration and exit")
 
     args = parser.parse_args()
@@ -59,7 +60,17 @@ def main():
         # Initialize pipeline
         pipeline = ContentIntelligencePipeline(config)
 
-        if args.check_once:
+        if args.manual:
+            # Run manual processing for specific video
+            logger.info(f"Running manual processing for {args.manual}...")
+            result = pipeline.run_manual(args.manual)
+            if result.get("success"):
+                logger.info("Manual processing completed successfully")
+                sys.exit(0)
+            else:
+                logger.error("Manual processing failed")
+                sys.exit(1)
+        elif args.check_once:
             # Run once and exit
             logger.info("Running single check...")
             pipeline.run_check()

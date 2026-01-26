@@ -25,6 +25,7 @@ class ContentAnalyzer:
         qwen_config = {
             "api_key": config.get("dashscope.api_key"),
             "model": config.get("dashscope.model", "qwen-max"),
+            "max_full_text_chars": config.get("dashscope.max_full_text_chars", 6000),
         }
 
         self.client = QwenClient(qwen_config)
@@ -44,7 +45,7 @@ class ContentAnalyzer:
 
         try:
             # Extract transcript text
-            transcript_text = transcript_data.get("text", "")
+            transcript_text = transcript_data.get("full_text", transcript_data.get("text", ""))
             video_title = video_info.get("video_title", video_info.get("title", ""))
 
             # Analyze content with LLM
@@ -53,6 +54,8 @@ class ContentAnalyzer:
             # Enhance with additional metadata
             enhanced_result = self._enhance_analysis_result(analysis_result, transcript_data, video_info)
 
+            if isinstance(analysis_result, dict) and analysis_result.get("error"):
+                self.logger.warning(f"Content analysis returned fallback result: {analysis_result.get('error')}")
             self.logger.info("Content analysis completed successfully")
             return enhanced_result
 
@@ -141,6 +144,7 @@ class ContentAnalyzer:
     def structure_for_feishu_blocks(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """
         Structure analysis result for Feishu Block architecture
+        优化排版，让每日复盘内容更易读
 
         Args:
             analysis_result: Analysis result from LLM
@@ -154,109 +158,92 @@ class ContentAnalyzer:
             # Build block structure
             blocks = []
 
-            # 1. Title block (Heading 1)
+            # 1. Title block (使用大标题)
             title = analysis_result.get("title", "视频内容分析")
-            blocks.append({"type": "heading_1", "content": title})
+            blocks.append({"type": "heading_1", "content": f"📊 {title}"})
+            blocks.append({"type": "text", "content": ""})  # 空行
 
-            # 2. Video metadata callout
+            # 2. Video metadata (简洁的元信息)
             video_metadata = analysis_result.get("video_metadata", {})
             if video_metadata.get("bvid"):
-                metadata_text = "📹 **视频信息**\n"
-                metadata_text += f"• BVID: {video_metadata.get('bvid', '')}\n"
-                metadata_text += f"• 上传时间: {video_metadata.get('upload_time', '')}\n"
-                metadata_text += f"• 视频链接: {video_metadata.get('url', '')}"
+                metadata_text = f"🎬 视频：{video_metadata.get('bvid', '')} | 📅 {video_metadata.get('upload_time', '')}"
+                blocks.append({"type": "text", "content": metadata_text})
+                blocks.append({"type": "text", "content": "---"})
+                blocks.append({"type": "text", "content": ""})
 
-                blocks.append({"type": "callout", "style": "blue", "content": metadata_text})
-
-            # 3. Summary callout
+            # 3. Summary (核心摘要，使用引用格式突出)
             summary = analysis_result.get("summary", "")
             if summary:
-                blocks.append(
-                    {
-                        "type": "callout",
-                        "style": "green",
-                        "content": f"📝 **内容摘要**\n{summary}",
-                    }
-                )
+                blocks.append({"type": "heading_2", "content": "💡 今日核心"})
+                blocks.append({"type": "callout", "style": "blue", "content": summary})
+                blocks.append({"type": "text", "content": ""})
 
-            # 4. Positions Table (High-Fidelity Extraction)
+            # 4. Positions Table (持仓变动 - 核心内容)
             positions = analysis_result.get("positions", [])
             if positions:
-                blocks.append({"type": "heading_2", "content": "📊 持仓变动与逻辑"})
+                blocks.append({"type": "heading_2", "content": "📈 持仓变动与逻辑"})
+                blocks.append({"type": "text", "content": ""})
 
-                headers = ["标的", "操作", "详情", "逻辑"]
-                rows = []
-                for pos in positions:
-                    rows.append(
-                        [
-                            pos.get("name", "-"),
-                            pos.get("action", "-"),
-                            pos.get("position_details", "-"),
-                            pos.get("logic", "-"),
-                        ]
-                    )
+                # 为每个持仓创建一个清晰的卡片式布局
+                for i, pos in enumerate(positions, 1):
+                    name = pos.get("name", "-")
+                    action = pos.get("action", "-")
+                    details = pos.get("position_details", "-")
+                    logic = pos.get("logic", "-")
 
-                blocks.append({"type": "table", "headers": headers, "rows": rows})
+                    # 使用表格式布局
+                    blocks.append({"type": "text", "content": f"**{i}. {name}** [{action}]"})
+                    blocks.append({"type": "text", "content": f"   • 仓位：{details}"})
+                    blocks.append({"type": "text", "content": f"   • 逻辑：{logic}"})
+                    blocks.append({"type": "text", "content": ""})
 
-            # 5. Quotes (Gold Sentences)
+            # 5. Quotes (金句 - 使用引用格式)
             quotes = analysis_result.get("quotes", [])
             if quotes:
                 blocks.append({"type": "heading_2", "content": "💬 核心金句"})
+                blocks.append({"type": "text", "content": ""})
 
                 for quote in quotes:
-                    blocks.append({"type": "callout", "style": "yellow", "content": f"“{quote}”"})
+                    blocks.append({"type": "callout", "style": "yellow", "content": f'"{quote}"'})
 
-            # 6. Verbatim Transcript (Full Text)
+                blocks.append({"type": "text", "content": ""})
+
+            # 6. Formatted Full Text (全文逐字稿 - 精修版)
             formatted_full_text = analysis_result.get("formatted_full_text", "")
+            if not formatted_full_text and analysis_result.get("segments"):
+                formatted_full_text = self._format_raw_transcript(analysis_result)
+
             if formatted_full_text:
-                blocks.append({"type": "heading_2", "content": "📝 全文逐字稿 (精修版)"})
-                blocks.append({
-                    "type": "callout",
-                    "style": "grey",
-                    "content": "以下是经过LLM智能整理的全文逐字稿，保留了原话的真实性，同时优化了段落结构。"
-                })
+                blocks.append({"type": "text", "content": "---"})
+                blocks.append({"type": "heading_2", "content": "📝 全文逐字稿"})
+                blocks.append({"type": "callout", "style": "grey", "content": "以下是经过LLM智能整理的全文逐字稿，保留了原话的真实性，同时优化了段落结构。"})
+                blocks.append({"type": "text", "content": ""})
 
-                # Split into paragraphs for better readability
-                paragraphs = formatted_full_text.split("\n\n")
+                # 按段落分割，每段作为一个block
+                max_block_chars = 800
+                raw_paragraphs = formatted_full_text.split("\n\n")
+                paragraphs: List[str] = []
+                for p in raw_paragraphs:
+                    p = p.strip()
+                    if not p:
+                        continue
+                    if len(p) <= max_block_chars:
+                        paragraphs.append(p)
+                        continue
+                    for i in range(0, len(p), max_block_chars):
+                        paragraphs.append(p[i : i + max_block_chars])
+
                 for paragraph in paragraphs:
-                    if paragraph.strip():
-                        # Add each paragraph as a separate text block
-                        blocks.append({"type": "text", "content": paragraph.strip()})
-                        # Add a small spacer between paragraphs
-                        blocks.append({"type": "text", "content": ""})
+                    blocks.append({"type": "text", "content": paragraph})
+                    blocks.append({"type": "text", "content": ""})
 
-            # 7. Optional: Raw Transcript with Timestamps (if available)
-            transcript_metadata = analysis_result.get("transcript_metadata", {})
-            segments = analysis_result.get("segments", [])
-
-            # Only show timestamped transcript if we have meaningful segments
-            if segments and len(segments) > 0:
-                raw_transcript = self._format_raw_transcript(analysis_result)
-                if raw_transcript:
-                    blocks.append({"type": "heading_2", "content": "⏱️ 原始转录（含时间戳）"})
-                    blocks.append(
-                        {
-                            "type": "callout",
-                            "style": "grey",
-                            "content": "💡 提示：时间戳格式为 [MM:SS] 或 [HH:MM:SS]，方便您快速定位到视频的具体位置。",
-                        }
-                    )
-                    # Split into chunks to avoid too long blocks (max 30 lines per block)
-                    for chunk in self._split_transcript_into_chunks(raw_transcript, max_lines=30):
-                        blocks.append({"type": "text", "content": chunk})
-
-            # 8. Footer
+            # 7. Footer
             from datetime import datetime
 
             processed_at = analysis_result.get("processed_at", datetime.now().isoformat())
-            blocks.append({"type": "divider"})
-
-            blocks.append(
-                {
-                    "type": "text",
-                    "content": f"📅 生成时间: {processed_at[:10]} {processed_at[11:19]}\n🤖 由内容情报流水线自动生成",
-                }
-            )
+            blocks.append({"type": "text", "content": "---"})
+            blocks.append({"type": "text", "content": f"📅 生成时间：{processed_at[:10]} {processed_at[11:19]}"})
+            blocks.append({"type": "text", "content": "🤖 由内容情报流水线自动生成"})
 
             return {"title": title, "blocks": blocks}
 

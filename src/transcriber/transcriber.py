@@ -1,192 +1,49 @@
-"""Main transcriber module combining Tingwu ASR and result processing"""
-
+"""
+Audio Transcriber Service
+"""
 from typing import Any, Dict, Optional
-
 from src.utils.config import Config
 from src.utils.logger import get_logger
-
 from .tingwu_client import TingwuClient
-from .transcript_processor import TranscriptProcessor
-
 
 class AudioTranscriber:
-    """Main audio transcriber class"""
-
     def __init__(self, config: Config):
-        """
-        Initialize audio transcriber
-
-        Args:
-            config: Configuration object
-        """
         self.config = config
         self.logger = get_logger()
-
-        # Initialize Tingwu client (using Aliyun credentials)
-        tingwu_config = {
-            "app_key": config.get("tingwu.app_key"),
-            "access_key_id": config.get("aliyun.access_key_id"),
-            "access_key_secret": config.get("aliyun.access_key_secret"),
-            "region": config.get("aliyun.region", "cn-shanghai"),
+        
+        # 传递必要的配置
+        # ⚠️ 关键修复：显式传递 tingwu.app_key，防止被过滤掉
+        client_config = {
+            "aliyun.access_key_id": config.get("aliyun.access_key_id"),
+            "aliyun.access_key_secret": config.get("aliyun.access_key_secret"),
+            # ✅ 补上这两行，打通数据流
+            "tingwu.app_key": config.get("tingwu.app_key"), 
+            "aliyun.app_key": config.get("aliyun.app_key") 
         }
+        
+        self.client = TingwuClient(client_config)
 
-        self.client = TingwuClient(tingwu_config)
-        self.processor = TranscriptProcessor()
-
-        # Default transcription parameters
-        self.default_params = {
-            "diarization_enabled": True,
-            "auto_chapters": True,
-            "speaker_labels": True,
-            "language_hints": ["zh-CN", "en-US"],
-            "timeout": 3600,
-            "poll_interval": 30,
-        }
-
-    def transcribe_audio_file(self, file_url: str, **kwargs) -> Optional[Dict[str, Any]]:
+    def transcribe_audio_file(self, file_url: str) -> Optional[Dict[str, Any]]:
         """
-        Transcribe audio file and return processed result
-
-        Args:
-            file_url: URL of audio file to transcribe
-            **kwargs: Additional transcription parameters
-
-        Returns:
-            Processed transcription result or None if failed
+        执行转写流程
         """
-        self.logger.info(f"Transcribing audio file: {file_url}")
-
-        # Merge with default parameters
-        params = {**self.default_params, **kwargs}
-
-        try:
-            # Transcribe using Tingwu
-            raw_result = self.client.transcribe_audio(file_url, **params)
-
-            if not raw_result:
-                self.logger.error(f"Transcription failed for: {file_url}")
-                return None
-
-            # Process result
-            processed_result = self.processor.process_transcript(raw_result)
-
-            # Add file URL to result
-            processed_result["source_url"] = file_url
-
-            self.logger.info(f"Transcription completed for: {file_url}")
-            return processed_result
-
-        except Exception as e:
-            self.logger.error(f"Transcription failed for {file_url}: {e}")
+        self.logger.info(f"开始转写音频: {file_url}")
+        
+        # 1. 提交任务
+        task_id = self.client.submit_task(file_url)
+        if not task_id:
             return None
-
-    def transcribe_multiple_files(self, file_urls: list, **kwargs) -> list:
-        """
-        Transcribe multiple audio files
-
-        Args:
-            file_urls: List of audio file URLs
-            **kwargs: Additional transcription parameters
-
-        Returns:
-            List of processed transcription results
-        """
-        self.logger.info(f"Transcribing {len(file_urls)} audio files")
-
-        results = []
-
-        for i, file_url in enumerate(file_urls, 1):
-            self.logger.info(f"Processing file {i}/{len(file_urls)}: {file_url}")
-
-            result = self.transcribe_audio_file(file_url, **kwargs)
-            if result:
-                results.append(result)
-            else:
-                self.logger.warning(f"Failed to transcribe file: {file_url}")
-
-        self.logger.info(f"Completed transcription for {len(results)}/{len(file_urls)} files")
-        return results
-
-    def format_for_llm(self, transcript: Dict[str, Any]) -> str:
-        """
-        Format transcript for LLM consumption
-
-        Args:
-            transcript: Processed transcript dictionary
-
-        Returns:
-            Formatted text string
-        """
-        return self.processor.format_for_llm(transcript)
-
-    def get_transcript_summary(self, transcript: Dict[str, Any]) -> str:
-        """
-        Get transcript summary
-
-        Args:
-            transcript: Processed transcript dictionary
-
-        Returns:
-            Summary text
-        """
-        return transcript.get("summary", "")
-
-    def get_transcript_text(self, transcript: Dict[str, Any]) -> str:
-        """
-        Get full transcript text
-
-        Args:
-            transcript: Processed transcript dictionary
-
-        Returns:
-            Full text
-        """
-        return transcript.get("text", "")
-
-    def get_transcript_segments(self, transcript: Dict[str, Any]) -> list:
-        """
-        Get transcript segments
-
-        Args:
-            transcript: Processed transcript dictionary
-
-        Returns:
-            List of segments
-        """
-        return transcript.get("segments", [])
-
-    def get_speaker_info(self, transcript: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Get speaker information
-
-        Args:
-            transcript: Processed transcript dictionary
-
-        Returns:
-            Speaker information dictionary
-        """
-        return transcript.get("speakers", {})
-
-    def get_chapters(self, transcript: Dict[str, Any]) -> list:
-        """
-        Get chapter information
-
-        Args:
-            transcript: Processed transcript dictionary
-
-        Returns:
-            List of chapters
-        """
-        return transcript.get("chapters", [])
-
-    def get_metadata(self, transcript: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Get transcript metadata
-
-        Args:
-            transcript: Processed transcript dictionary
-
-        Returns:
-            Metadata dictionary
-        """
-        return transcript.get("metadata", {})
+            
+        # 2. 等待结果
+        result = self.client.get_task_result(task_id)
+        if not result:
+            return None
+            
+        # 3. 结果校验
+        text_length = len(result.get("full_text", ""))
+        self.logger.info(f"转写完成，文本长度: {text_length} 字")
+        
+        if text_length == 0:
+            self.logger.warning("⚠️ 警告: 转写结果为空白! 请检查音频文件是否损坏或静音。")
+            
+        return result

@@ -116,9 +116,9 @@ class FeishuClient:
             raise NetworkError(f"Document creation failed: {e}")
 
     @with_retry(max_attempts=3, exceptions=(NetworkError, APIError))
-    def add_blocks(self, document_id: str, blocks: List[Dict[str, Any]], index: int = -1) -> bool:
+    def _add_blocks_single(self, document_id: str, blocks: List[Dict[str, Any]], index: int = -1) -> bool:
         """
-        Add blocks to document
+        Add blocks to document (single request)
 
         Args:
             document_id: Document ID
@@ -128,11 +128,8 @@ class FeishuClient:
         Returns:
             True if successful, False otherwise
         """
-        self.logger.info(f"Adding {len(blocks)} blocks to document: {document_id}")
-
         try:
             url = f"{self.doc_url}/{document_id}/blocks/{document_id}/children"
-
             payload = {"children": blocks, "index": index}
 
             response = requests.post(url, headers=self._get_headers(), json=payload)
@@ -150,8 +147,37 @@ class FeishuClient:
             if hasattr(e, "response") and e.response is not None:
                 self.logger.error(f"Feishu API Error Response: {e.response.text}")
             self.logger.error(f"Failed to add blocks: {e}")
-            self.logger.error(f"Payload was: {json.dumps(payload, ensure_ascii=False)}")
+            payload_preview = json.dumps(payload, ensure_ascii=False)
+            if len(payload_preview) > 2000:
+                payload_preview = payload_preview[:2000] + "...(truncated)"
+            self.logger.error(f"Payload was: {payload_preview}")
             raise NetworkError(f"Block addition failed: {e}")
+
+    def add_blocks(self, document_id: str, blocks: List[Dict[str, Any]], index: int = -1) -> bool:
+        """
+        Add blocks to document (batched)
+
+        Feishu DocX API limits `children` length per request (max 50).
+        This method batches large block lists to avoid 400 field validation errors.
+        """
+        max_children_per_request = 50
+        if not blocks:
+            return True
+
+        self.logger.info(f"Adding {len(blocks)} blocks to document: {document_id}")
+
+        if index == -1:
+            for start in range(0, len(blocks), max_children_per_request):
+                batch = blocks[start : start + max_children_per_request]
+                self._add_blocks_single(document_id, batch, index=-1)
+            return True
+
+        current_index = index
+        for start in range(0, len(blocks), max_children_per_request):
+            batch = blocks[start : start + max_children_per_request]
+            self._add_blocks_single(document_id, batch, index=current_index)
+            current_index += len(batch)
+        return True
 
     @with_retry(max_attempts=3, exceptions=(NetworkError, APIError))
     def create_table(self, document_id: str, rows: int, columns: int) -> str:

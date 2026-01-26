@@ -157,6 +157,44 @@ class ContentIntelligencePipeline:
             results["execution_time"] = time.time() - start_time
             return results
 
+    def run_manual(self, bvid: str) -> Dict[str, Any]:
+        """
+        Run pipeline for a specific video manually
+
+        Args:
+            bvid: Bilibili Video ID
+
+        Returns:
+            Processing result
+        """
+        self.logger.info(f"Starting manual processing for video: {bvid}")
+        
+        try:
+            # Fetch video info
+            video_info = self.downloader.get_video_info(bvid)
+            
+            if not video_info:
+                raise ValueError(f"Could not fetch info for video {bvid}")
+                
+            # Check duration limit even for manual run? 
+            # User probably wants to force it, but let's at least log warning if it's too long
+            # The downloader logic currently doesn't enforce limit on single fetch, 
+            # only in check_new_videos. So we are good.
+            
+            # Process video
+            result = self._process_video(video_info)
+            
+            if result["success"]:
+                self.logger.info(f"Manual processing completed successfully for {bvid}")
+            else:
+                self.logger.error(f"Manual processing failed for {bvid}: {result.get('error')}")
+                
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Manual processing failed: {e}")
+            return {"success": False, "error": str(e), "bvid": bvid}
+
     def _process_video(self, video_info: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process a single video through the pipeline
@@ -192,6 +230,7 @@ class ContentIntelligencePipeline:
             our_video = video_info.copy()
             our_video["audio_file_path"] = audio_file_path
             our_video["video_title"] = video_title
+            our_video["title"] = video_title
 
             result["stages"]["download"] = {
                 "success": True,
@@ -230,7 +269,7 @@ class ContentIntelligencePipeline:
 
             # Stage 5: Render Feishu document
             self.logger.info(f"Stage 5: Rendering Feishu document for {bvid}")
-            doc_url = self.feishu_renderer.render_content(content_data)
+            doc_url = self.feishu_renderer.render_content(content_data, our_video)
 
             if not doc_url:
                 raise Exception("Document rendering failed")

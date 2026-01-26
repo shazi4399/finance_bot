@@ -3,7 +3,7 @@
 import os
 import sqlite3
 from datetime import datetime
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import yt_dlp
 
@@ -19,6 +19,7 @@ class BilibiliMonitor:
         uid: str,
         history_db: str = "data/video_history.db",
         cookies_file: str = None,
+        max_video_duration: int = 3600,  # Default 1 hour
     ):
         """
         Initialize Bilibili monitor
@@ -27,10 +28,12 @@ class BilibiliMonitor:
             uid: Bilibili user ID to monitor
             history_db: SQLite database path for storing video history
             cookies_file: Optional path to cookies file for authentication
+            max_video_duration: Maximum video duration in seconds (default: 3600)
         """
         self.uid = uid
         self.history_db = history_db
         self.cookies_file = cookies_file
+        self.max_video_duration = max_video_duration
         self.logger = get_logger()
 
         # Ensure data directory exists
@@ -52,6 +55,36 @@ class BilibiliMonitor:
                 )
             """)
             conn.commit()
+
+    def _parse_duration(self, duration: Any) -> int:
+        """
+        Parse duration to seconds
+
+        Args:
+            duration: Duration in seconds (int) or "MM:SS"/"HH:MM:SS" string
+
+        Returns:
+            Duration in seconds, or 0 if parsing fails
+        """
+        if isinstance(duration, (int, float)):
+            return int(duration)
+
+        if isinstance(duration, str):
+            # Try parsing as simple number first
+            if duration.isdigit():
+                return int(duration)
+                
+            try:
+                parts = duration.strip().split(":")
+                if len(parts) == 2:
+                    return int(parts[0]) * 60 + int(parts[1])
+                elif len(parts) == 3:
+                    return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+            except (ValueError, AttributeError):
+                pass
+        
+        self.logger.warning(f"Could not parse duration: {duration}")
+        return 0
 
     @with_retry(max_attempts=3, exceptions=(NetworkError, Exception))
     def get_video_list(self, limit: int = 20) -> List[Dict[str, str]]:
@@ -200,9 +233,23 @@ class BilibiliMonitor:
             processed_bvids = {row[0] for row in cursor.fetchall()}
 
         # Filter new videos
-        new_videos = [video for video in all_videos if video["bvid"] not in processed_bvids]
+        new_videos = []
+        for video in all_videos:
+            if video["bvid"] in processed_bvids:
+                continue
+                
+            # Check duration
+            duration_seconds = self._parse_duration(video.get("duration", 0))
+            if duration_seconds > self.max_video_duration:
+                self.logger.info(
+                    f"Skipping video {video['bvid']} ({video['title']}): "
+                    f"Duration {duration_seconds}s exceeds limit {self.max_video_duration}s"
+                )
+                continue
+                
+            new_videos.append(video)
 
-        self.logger.info(f"Found {len(new_videos)} new videos")
+        self.logger.info(f"Found {len(new_videos)} new videos (within duration limit)")
         return new_videos
 
     def mark_video_processed(self, bvid: str, title: str = "", upload_time: str = ""):
@@ -238,6 +285,47 @@ class BilibiliMonitor:
             Video URL
         """
         return f"https://www.bilibili.com/video/{bvid}"
+
+    def get_video_info(self, bvid: str) -> Dict[str, str]:
+        """
+        Get video info for a specific BVID
+
+        Args:
+            bvid: Video BVID
+
+        Returns:
+            Video info dictionary
+        """
+        url = self.get_video_url(bvid)
+        self.logger.info(f"Fetching video info for {bvid}")
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+        }
+
+        # Add cookies configuration if available
+        if self.cookies_file and os.path.exists(self.cookies_file):
+            ydl_opts["cookiefile"] = self.cookies_file
+        else:
+            ydl_opts["cookies_from_browser"] = "chrome"
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                # Format similar to get_video_list
+                return {
+                    "bvid": bvid,
+                    "title": info.get("title", ""),
+                    "upload_time": info.get("upload_date", ""),
+                    "url": url,
+                    "duration": info.get("duration", 0),
+                }
+        except Exception as e:
+            self.logger.error(f"Failed to fetch video info for {bvid}: {e}")
+            raise NetworkError(f"Failed to fetch video info: {e}")
 
     def get_processed_count(self) -> int:
         """

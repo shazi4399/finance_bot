@@ -28,7 +28,13 @@ class VideoDownloader:
             raise ValueError("Bilibili UID not configured")
 
         cookies_file = config.get("monitoring.cookies_file")
-        self.monitor = BilibiliMonitor(uid=uid, history_db="data/video_history.db", cookies_file=cookies_file)
+        max_duration = config.get("monitoring.max_video_duration", 3600)
+        self.monitor = BilibiliMonitor(
+            uid=uid, 
+            history_db="data/video_history.db", 
+            cookies_file=cookies_file,
+            max_video_duration=max_duration
+        )
 
         temp_dir = config.get("storage.temp_dir", "/tmp/finance_bot")
         self.extractor = AudioExtractor(temp_dir=temp_dir, cookies_file=cookies_file)
@@ -55,6 +61,22 @@ class VideoDownloader:
         except Exception as e:
             self.logger.error(f"Failed to check for new videos: {e}")
             return []
+
+    def get_video_info(self, bvid: str) -> Optional[Dict[str, str]]:
+        """
+        Get info for a specific video
+
+        Args:
+            bvid: Video BVID
+
+        Returns:
+            Video info dictionary or None if failed
+        """
+        try:
+            return self.monitor.get_video_info(bvid)
+        except Exception as e:
+            self.logger.error(f"Failed to get info for video {bvid}: {e}")
+            return None
 
     def download_and_extract(self, video_info: Dict[str, str]) -> Optional[Tuple[str, str]]:
         """

@@ -29,6 +29,7 @@ class LLMProcessor:
         qwen_config = {
             "api_key": config.get("dashscope.api_key"),
             "model": config.get("dashscope.model", "qwen-max"),
+            "max_full_text_chars": config.get("dashscope.max_full_text_chars", 6000),
         }
         self.client = QwenClient(qwen_config)
 
